@@ -51,6 +51,12 @@ def run(
         "-m",
         help="LLM model to use (auto, claude-3-7-sonnet, gpt-4o, deepseek-r1). Auto selects Claude if ANTHROPIC_API_KEY is available.",
     ),
+    founder_name: Optional[str] = typer.Option(
+        None,
+        "--founder-name",
+        "-f",
+        help="Your name as the founder (to be used in messages)",
+    ),
 ):
     """
     Run the SeedPitcher agent to help with seed fundraising.
@@ -73,6 +79,11 @@ def run(
 
     config.update_config(user_config)
     config.INVESTOR_THRESHOLD = threshold
+
+    # Set founder name if provided via command line
+    if founder_name:
+        config.FOUNDER_NAME = founder_name
+        console.print(f"[green]Founder name set to: {founder_name}[/green]")
 
     # Set the LLM model, with special handling for auto mode
     if llm_model.lower() == "auto":
@@ -152,7 +163,40 @@ def run_interactive_mode(agent, linkedin_urls=None):
             "history": [],
             "urls_to_process": [],
             "browser": None,
+            "founder_name": config.FOUNDER_NAME,  # Initialize with the config value
         }
+
+    # Prompt for founder name if not provided via command line
+    if not initial_state.get("founder_name"):
+        initial_state["founder_name"] = Prompt.ask(
+            "[bold]Please enter your name as it should appear in outreach messages[/bold]",
+            default="Founder",
+        )
+        console.print(
+            f"[blue]Founder name set to: {initial_state['founder_name']}[/blue]"
+        )
+
+        # Also update the config for persistence
+        config.FOUNDER_NAME = initial_state["founder_name"]
+
+        # Save to config file for future use
+        config_file = Path.home() / ".seed_pitcher" / "config.json"
+        if config_file.exists():
+            with open(config_file, "r") as f:
+                user_config = json.load(f)
+        else:
+            user_config = {}
+            config_file.parent.mkdir(exist_ok=True)
+
+        user_config["founder_name"] = initial_state["founder_name"]
+        with open(config_file, "w") as f:
+            json.dump(user_config, f)
+
+    # Add founder name to startup_info as well for message drafting
+    if "startup_info" in initial_state and initial_state["founder_name"]:
+        if initial_state["startup_info"] is None:
+            initial_state["startup_info"] = {}
+        initial_state["startup_info"]["founder_name"] = initial_state["founder_name"]
 
     # Initialize browser once at the beginning to avoid multiple browser instances
     try:
@@ -176,6 +220,9 @@ def run_interactive_mode(agent, linkedin_urls=None):
                 "investor_score": 0.0,
                 "investor_analysis": {},
                 "message_draft": "",
+                "founder_name": initial_state.get(
+                    "founder_name", ""
+                ),  # Carry over founder name
                 "history": initial_state.get(
                     "history", []
                 ).copy(),  # Copy to avoid shared reference
@@ -298,24 +345,41 @@ def run_interactive_mode(agent, linkedin_urls=None):
                                     )
                                     continue
 
-                            # Ask for the founder's name to replace placeholder if needed
+                            # Handle founder name in message content
                             message_content = result["message_draft"]
+                            console.print(
+                                "[blue]Personalizing message with your name...[/blue]"
+                            )
 
+                            # The founder name should already be in the state from our earlier modifications
+                            # But just in case, we'll check and set a fallback if needed
+                            if not state.get("founder_name"):
+                                # This should rarely happen since we ask at startup now
+                                state["founder_name"] = config.FOUNDER_NAME or "Founder"
+
+                            # Add founder name to startup_info for future use
+                            if "startup_info" in state and state["founder_name"]:
+                                state["startup_info"]["founder_name"] = state[
+                                    "founder_name"
+                                ]
+
+                            # Handle all possible placeholder formats
                             if "[Founder's Name]" in message_content:
-                                # Get founder name if not already in state
-                                if not state.get("founder_name"):
-                                    state["founder_name"] = Prompt.ask(
-                                        "[bold]Please enter your name as it should appear in the message[/bold]",
-                                        default="Founder",
-                                    )
-
-                                # Replace placeholder with actual name
                                 message_content = message_content.replace(
                                     "[Founder's Name]", state["founder_name"]
                                 )
-                                console.print(
-                                    f"[blue]Updated message with your name: {state['founder_name']}[/blue]"
+                            if "[Your Name]" in message_content:
+                                message_content = message_content.replace(
+                                    "[Your Name]", state["founder_name"]
                                 )
+                            if "{founder_name}" in message_content:
+                                message_content = message_content.replace(
+                                    "{founder_name}", state["founder_name"]
+                                )
+
+                            console.print(
+                                f"[blue]Updated message with your name: {state['founder_name']}[/blue]"
+                            )
 
                             # Display final message for confirmation
                             console.print("\n[bold]Final message to be sent:[/bold]\n")
@@ -452,6 +516,30 @@ def run_interactive_mode(agent, linkedin_urls=None):
 
                         # Display message draft if available
                         if "message_draft" in result and result["message_draft"]:
+                            # Process the message to include founder name before displaying
+                            message_content = result["message_draft"]
+
+                            # Ensure founder name is set in batch mode
+                            if not state.get("founder_name"):
+                                state["founder_name"] = config.FOUNDER_NAME or "Founder"
+
+                            # Replace name placeholders with founder name
+                            if "[Founder's Name]" in message_content:
+                                message_content = message_content.replace(
+                                    "[Founder's Name]", state["founder_name"]
+                                )
+                            if "[Your Name]" in message_content:
+                                message_content = message_content.replace(
+                                    "[Your Name]", state["founder_name"]
+                                )
+                            if "{founder_name}" in message_content:
+                                message_content = message_content.replace(
+                                    "{founder_name}", state["founder_name"]
+                                )
+
+                            # Update the message draft with personalized content
+                            result["message_draft"] = message_content
+
                             console.print(
                                 "\n[bold green]===== Message Draft =====[/bold green]"
                             )

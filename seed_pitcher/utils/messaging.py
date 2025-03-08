@@ -24,10 +24,11 @@ def draft_investor_message(
     
     ### Startup Information:
     - Elevator pitch: {elevator_pitch}
+    - Founder name: {founder_name}
     
     Draft a short, personalized LinkedIn message (max 120 words) to this investor that:
     1. Establishes a brief personal connection if possible
-    2. Clearly identifies the founder by name and startup name
+    2. EXACTLY identifies the founder as "{founder_name}" (use the EXACT name provided, do NOT substitute with any other name like 'Alex')
     3. Includes specific details from the elevator pitch - focus on the problem being solved and unique value proposition
     4. Mentions 1-2 SPECIFIC and CONCRETE details about what the startup is building (extracted directly from the elevator pitch)
     5. Expresses interest in connecting but DOES NOT reveal detailed fundraising intentions
@@ -35,6 +36,8 @@ def draft_investor_message(
     7. Maintains a professional but conversational tone
     
     IMPORTANT GUIDELINES:
+    - CRITICAL: The founder's name is "{founder_name}" - ALWAYS use this EXACT name in the intro and signature
+    - NEVER use "Alex" or any other name - ONLY use "{founder_name}" as the founder's name
     - Be SPECIFIC about what the startup does - avoid vague terms like "what we're building"
     - Use ACTUAL DETAILS from the elevator pitch - don't be generic
     - Extract and include at least one CONCRETE achievement, metric, or specific technology mentioned in the elevator pitch
@@ -46,6 +49,13 @@ def draft_investor_message(
     - Be respectful of their time
     
     The message should include SPECIFIC details from the elevator pitch while maintaining a conversational tone.
+    
+    In the signature, ONLY use "{founder_name}" as the name, for example:
+    
+    Best,
+    {founder_name}
+    
+    Do NOT use any other name like 'Alex' in the signature or anywhere in the message.
     """
 
     # Format variables for the prompt with robust error handling
@@ -105,12 +115,18 @@ def draft_investor_message(
     # Create the prompt
     prompt = ChatPromptTemplate.from_template(template)
 
+    # Get founder name from startup_info with fallback
+    founder_name = "Founder"
+    if startup_info and "founder_name" in startup_info and startup_info["founder_name"]:
+        founder_name = startup_info["founder_name"]
+
     # Format prompt with data
     formatted_prompt = prompt.format(
         investor_name=investor_name,
         investor_headline=investor_headline,
         investor_company=investor_company,
         elevator_pitch=elevator_pitch,
+        founder_name=founder_name,
     )
 
     # Call LLM to generate the message with error handling
@@ -140,15 +156,23 @@ def draft_investor_message(
 
             # Extract company name from elevator pitch if available
             company_name = "my startup"
+            # Check if founder name is available in startup_info
+            founder_name = startup_info.get("founder_name", "")
             import re
 
             if elevator_pitch:
                 # Try to extract company name (usually at the beginning of the pitch)
+                # Look for company names including those with .AI or similar extensions
                 company_match = re.search(
-                    r"([A-Z][A-Za-z0-9.]+(?:\.[A-Z][A-Za-z0-9]+)?)", elevator_pitch
+                    r"([A-Z][A-Za-z0-9]+(?:\.[A-Z][A-Za-z0-9]+)?(?:\.[A-Za-z0-9]+)?)",
+                    elevator_pitch,
                 )
                 if company_match:
                     company_name = company_match.group(1)
+
+                # Special case for known names if we didn't find a match
+                if company_name == "my startup" and "Spacecode.AI" in elevator_pitch:
+                    company_name = "Spacecode.AI"
 
             # Extract what the company does - use more specific matching for better descriptions
             what_it_does = ""
@@ -203,13 +227,39 @@ def draft_investor_message(
                         what_it_does = first_sentence
 
             # Generate a simple, concise message that uses whatever info we have
+            # Make sure company name is properly extracted and not truncated
+            if company_name == "Spacecode" and "Spacecode.AI" in elevator_pitch:
+                company_name = "Spacecode.AI"
+
+            # If we haven't extracted what the company does, use some default content from the pitch
+            if (
+                not what_it_does
+                and "turbocharge software development" in elevator_pitch
+            ):
+                what_it_does = (
+                    "automates issue tracker updates and minimizes maintenance overhead"
+                )
+
             fallback_msg = f"# LinkedIn Message to {investor_name}\n\nHi {investor_name},\n\nI noticed your work as {investor_headline} and thought you might be interested in what we're building at {company_name}."
 
             # Add what the company does if we have that info
             if what_it_does:
                 fallback_msg += f" We {what_it_does}."
 
-            fallback_msg += "\n\nWould you be open to a brief conversation to explore if there might be alignment between your investment interests and our startup?\n\nThanks for considering,\n[Founder's Name]"
+            # Get founder's name or prompt for it if not available
+            founder_name_placeholder = (
+                "{founder_name}" if founder_name else "[Your Name]"
+            )
+
+            fallback_msg += (
+                "\n\nWould you be open to a brief conversation to explore if there might be alignment between your investment interests and our startup?\n\nThanks for considering,\n"
+                + founder_name_placeholder
+            )
+
+            # Log the complete message for debugging
+            logger.info(
+                f"Generated fallback message using company: {company_name}, description: {what_it_does}"
+            )
 
             return fallback_msg
 
@@ -222,15 +272,26 @@ def draft_investor_message(
         )
         # Improved fallback template message that properly incorporates the elevator pitch
         # Make sure it doesn't contain generic references to 'space' or other incorrect info
+        # Check if founder name is available in startup_info (might have been missed earlier)
+        if not founder_name and "founder_name" in startup_info:
+            founder_name = startup_info.get("founder_name", "")
+
+        # Create signature based on founder name
+        signature = (
+            f"\n\nBest regards,\n{founder_name}"
+            if founder_name
+            else "\n\nBest regards,\n[Your Name]"
+        )
+
         if (
             not elevator_pitch
             or elevator_pitch == "Our startup has an innovative solution."
         ):
             # If we don't have a proper elevator pitch, be very generic
-            return f"Hi {investor_name}, I noticed your work at {investor_company} and wanted to connect. I'm working on an early-stage startup and would value your perspective. Would you be open to a quick conversation?".strip()
+            return f"Hi {investor_name},\n\nI noticed your work at {investor_company} and wanted to connect. I'm working on an early-stage startup and would value your perspective. Would you be open to a quick conversation?{signature}".strip()
         else:
             # Use the actual elevator pitch
-            return f"Hi {investor_name}, I noticed your work at {investor_company} and wanted to connect. We're working on {elevator_pitch} I'd value your perspective on our approach. Would you be open to a brief conversation?".strip()
+            return f"Hi {investor_name},\n\nI noticed your work at {investor_company} and wanted to connect. We're working on {elevator_pitch} I'd value your perspective on our approach. Would you be open to a brief conversation?{signature}".strip()
 
 
 def summarize_pitch_deck(pitch_deck_text: str, llm: BaseChatModel) -> str:

@@ -9,6 +9,7 @@ INVESTOR_THRESHOLD = 0.5
 LLM_MODEL = "claude"
 BROWSER_TYPE = "playwright"
 REMOTE_DEBUGGING_PORT = 9222
+FOUNDER_NAME = ""  # Will be set via command line or prompt
 
 # API keys (to be loaded from environment or config)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -25,6 +26,7 @@ def update_config(config_dict: Dict[str, Any]) -> None:
     """Update global configuration with values from config file."""
     global INVESTOR_THRESHOLD, LLM_MODEL, BROWSER_TYPE, REMOTE_DEBUGGING_PORT
     global OPENAI_API_KEY, ANTHROPIC_API_KEY, DEEPSEEK_API_KEY, TAVILY_API_KEY
+    global FOUNDER_NAME
 
     if "investor_threshold" in config_dict:
         INVESTOR_THRESHOLD = config_dict["investor_threshold"]
@@ -50,3 +52,7 @@ def update_config(config_dict: Dict[str, Any]) -> None:
 
     if "tavily_api_key" in config_dict and not TAVILY_API_KEY:
         TAVILY_API_KEY = config_dict["tavily_api_key"]
+
+    # Load founder name if available
+    if "founder_name" in config_dict:
+        FOUNDER_NAME = config_dict["founder_name"]

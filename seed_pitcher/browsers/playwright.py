@@ -53,11 +53,32 @@ class PlaywrightBrowser:
                 # If connection fails, launch a new browser instance
                 print(f"Could not connect to existing Chrome instance: {str(e)}")
                 print("Launching new browser instance...")
+
+                # Configure browser for better visibility and performance
+                browser_args = [
+                    "--start-maximized",  # Start with window maximized
+                    "--disable-extensions",  # Disable extensions for stability
+                    "--disable-popup-blocking",  # Allow popups (like message windows)
+                    "--window-size=1920,1080",  # Set a large window size
+                    "--disable-infobars",  # Remove info bars that might interfere with clicks
+                ]
+
                 self.browser = self.playwright.chromium.launch(
-                    headless=False, slow_mo=100
+                    headless=False,
+                    slow_mo=50,  # Reduced slow_mo for better responsiveness
+                    args=browser_args,
                 )
-                self.context = self.browser.new_context()
+
+                # Create a context with specific viewport size
+                self.context = self.browser.new_context(
+                    viewport={"width": 1920, "height": 1080}
+                )
+
                 self.page = self.context.new_page()
+
+                # Configure longer timeouts for all operations
+                self.page.set_default_timeout(60000)  # 60 seconds timeout
+
                 print("Successfully launched new Chrome browser")
 
         except Exception as e:
@@ -128,28 +149,137 @@ class PlaywrightBrowser:
             return []
 
     def click(self, element: Any) -> None:
-        """Click on an element."""
+        """Click on an element with retry logic and better error handling."""
+        import logging
+
+        logger = logging.getLogger("seed_pitcher")
+
         if not element:
-            print("Cannot click: element is None")
+            logger.error("Cannot click: element is None")
             return
 
+        # Try multiple click methods in sequence to ensure success
+        for attempt in range(3):  # Try 3 times with different methods
+            try:
+                # Ensure browser window is active
+                self.page.bring_to_front()
+
+                # Scroll element into view before clicking
+                self.page.evaluate(
+                    "(element) => { element.scrollIntoView({behavior: 'smooth', block: 'center'}); }",
+                    element,
+                )
+
+                # Wait for element to be stable
+                time.sleep(1)
+
+                if attempt == 0:
+                    # First try: standard click with longer timeout
+                    logger.info("Trying standard click")
+                    self.page.set_default_timeout(60000)  # 60 seconds timeout
+                    element.click(timeout=60000, force=False)
+                elif attempt == 1:
+                    # Second try: force click which bypasses some checks
+                    logger.info("Trying force click")
+                    element.click(force=True, timeout=60000)
+                else:
+                    # Third try: JavaScript click
+                    logger.info("Trying JavaScript click")
+                    self.page.evaluate("(element) => { element.click(); }", element)
+
+                # If we get here, click was successful
+                logger.info("Click successful")
+                time.sleep(2)  # Wait longer for action to complete
+                return
+
+            except Exception as e:
+                logger.warning(f"Click attempt {attempt + 1} failed: {str(e)}")
+                time.sleep(2)  # Wait before retrying
+
+        # All attempts failed
+        logger.error("All click methods failed")
+
+        # Last resort: try dispatch click event directly
         try:
-            element.click()
-            time.sleep(1)  # Wait for action to complete
+            logger.info("Trying dispatch event as last resort")
+            self.page.evaluate(
+                """
+                (element) => {
+                    const clickEvent = new MouseEvent('click', {
+                        view: window,
+                        bubbles: true,
+                        cancelable: true,
+                        buttons: 1
+                    });
+                    element.dispatchEvent(clickEvent);
+                }
+                """,
+                element,
+            )
+            time.sleep(2)
+            logger.info("Dispatch event completed")
         except Exception as e:
-            print(f"Error clicking element: {str(e)}")
+            logger.error(f"Final click attempt also failed: {str(e)}")
 
     def type_text(self, element: Any, text: str) -> None:
-        """Type text into an element."""
+        """Type text into an element with better error handling and multiple attempts."""
+        import logging
+
+        logger = logging.getLogger("seed_pitcher")
+
         if not element:
-            print("Cannot type text: element is None")
+            logger.error("Cannot type text: element is None")
             return
 
-        try:
-            element.fill("")
-            element.type(text)
-        except Exception as e:
-            print(f"Error typing text: {str(e)}")
+        for attempt in range(3):  # Try 3 times with different methods
+            try:
+                if attempt == 0:
+                    # First try: clear and type
+                    logger.info("Trying standard fill and type method")
+                    element.fill("")  # Clear existing text
+                    time.sleep(0.5)  # Brief pause between clearing and typing
+                    element.type(
+                        text, delay=5
+                    )  # Type with slight delay between keypresses
+                elif attempt == 1:
+                    # Second try: focus and type
+                    logger.info("Trying focus and type method")
+                    element.focus()
+                    time.sleep(0.5)
+                    element.press("Control+A")  # Select all text
+                    element.press("Delete")  # Delete selected text
+                    time.sleep(0.5)
+                    element.type(text, delay=10)  # Type with more delay
+                else:
+                    # Third try: JavaScript approach
+                    logger.info("Trying JavaScript approach")
+                    # Use JavaScript to set the value and trigger input events
+                    self.page.evaluate(
+                        """
+                        (element, text) => {
+                            element.focus();
+                            element.innerHTML = '';
+                            element.textContent = text;
+                            
+                            // Trigger input event to activate any listeners
+                            element.dispatchEvent(new Event('input', { bubbles: true }));
+                            element.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                        """,
+                        element,
+                        text,
+                    )
+
+                # If we get here, typing was successful
+                logger.info("Text input successful")
+                return
+
+            except Exception as e:
+                logger.warning(f"Type attempt {attempt + 1} failed: {str(e)}")
+                time.sleep(1)  # Wait before retrying
+
+        # All attempts failed
+        logger.error("All typing methods failed")
 
     def get_text(self, element: Any) -> str:
         """Get text from an element."""
@@ -206,6 +336,56 @@ class PlaywrightBrowser:
         except Exception as e:
             print(f"Error waiting for element {selector}: {str(e)}")
             return None
+
+    def execute_script(self, script: str, element: Any = None) -> Any:
+        """Execute JavaScript in the browser with better error handling."""
+        import logging
+
+        logger = logging.getLogger("seed_pitcher")
+
+        if not self.page:
+            logger.error("Cannot execute script: browser not initialized")
+            return None
+
+        try:
+            # Ensure the page is active before executing script
+            self.page.bring_to_front()
+
+            # Different execution paths based on whether an element is provided
+            if element:
+                logger.info("Executing script with element")
+                return self.page.evaluate(script, element)
+            else:
+                logger.info("Executing script without element")
+                return self.page.evaluate(script)
+
+        except Exception as e:
+            logger.error(f"Error executing script: {str(e)}")
+
+            # Try an alternative method if the first one fails
+            try:
+                logger.info("Trying alternative script execution method")
+
+                # For element-based scripts that failed, try with a different approach
+                if element:
+                    # Create a script that works with element selectors instead
+                    result = self.page.evaluate(
+                        """
+                        (script) => {
+                            // Execute the script in the global context
+                            return eval(script);
+                        }
+                        """,
+                        script.replace("arguments[0]", "document.activeElement"),
+                    )
+                    return result
+                else:
+                    # Just try to evaluate it directly as a string
+                    return self.page.evaluate(f"() => {{ {script} }}")
+
+            except Exception as e2:
+                logger.error(f"Alternative script execution also failed: {str(e2)}")
+                return None
 
     def close(self) -> None:
         """Close the browser."""
