@@ -1,0 +1,5 @@
+.env
+.venv
+seed_pitcher.egg-info
+**/__pycache__
+*.log
