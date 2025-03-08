@@ -19,8 +19,8 @@ An agentic system to assist with seed fundraising for early-stage startups. Seed
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/seed-pitcher.git
-cd seed-pitcher
+git clone https://github.com/yourusername/seedpitcher.git
+cd seedpitcher
 
 # Create and activate a virtual environment
 python -m venv .venv
@@ -41,19 +41,19 @@ pip install -e .
 
 ```bash
 # Basic usage
-seed-pitcher run
+seedpitcher run
 
 # With a pitch deck
-seed-pitcher run --pitch-deck /path/to/your/pitch_deck.pdf
+seedpitcher run --pitch-deck /path/to/your/pitch_deck.pdf
 
 # With specific LinkedIn profile URLs
-seed-pitcher run --linkedin-urls https://linkedin.com/in/profile1 https://linkedin.com/in/profile2
+seedpitcher run --linkedin-urls https://linkedin.com/in/profile1 https://linkedin.com/in/profile2
 
 # Set scoring threshold
-seed-pitcher run --threshold 0.8
+seedpitcher run --threshold 0.8
 
 # Choose LLM model
-seed-pitcher run --llm-model claude-3-7
+seedpitcher run --llm-model claude-3-7
 ```
 
 ## Configuration

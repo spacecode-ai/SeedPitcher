@@ -147,7 +147,9 @@ def simulate_search_results(
     random.seed(seed)
 
     # Decide if this is a tech investor or broader focus
-    is_tech_focused = random.random() < config.INVESTOR_THRESHOLD  # 70% chance of tech focus
+    is_tech_focused = (
+        random.random() < config.INVESTOR_THRESHOLD
+    )  # 70% chance of tech focus
 
     # Select relevant sectors
     if is_tech_focused:

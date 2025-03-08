@@ -152,8 +152,18 @@ def analyze_profile(state: AgentState) -> AgentState:
         logger.info(f"Starting profile extraction for: {url}")
         profile_data = linkedin.extract_profile(url)
 
+        # Check if extraction failed (profile_data is None or has an error)
+        if profile_data is None:
+            logger.error(f"Profile extraction failed: returned None")
+            # Move to the next URL if available, otherwise end
+            if state["urls_to_process"]:
+                state["action"] = "analyze_profile"
+            else:
+                state["action"] = "end"
+            return state
+
         # Check if there was an error in profile extraction
-        if "error" in profile_data:
+        if isinstance(profile_data, dict) and "error" in profile_data:
             logger.error(f"Profile extraction failed: {profile_data['error']}")
             # Move to the next URL if available, otherwise end
             if state["urls_to_process"]:

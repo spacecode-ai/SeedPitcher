@@ -221,6 +221,179 @@ def run_interactive_mode(agent, linkedin_urls=None):
                     logger.info(f"Investor score: {result.get('investor_score', 0)}")
                     if "message_draft" in result and result["message_draft"]:
                         logger.info("Message draft created successfully")
+
+                        # Display the message draft to the user
+                        console.print(
+                            "\n[bold green]===== Message Draft =====[/bold green]"
+                        )
+                        console.print(result["message_draft"])
+                        console.print(
+                            "[bold green]=======================[/bold green]\n"
+                        )
+
+                        # Ask for confirmation or edits
+                        action = Prompt.ask(
+                            "[bold]Would you like to[/bold]",
+                            choices=["send", "edit", "skip"],
+                            default="edit",
+                        )
+
+                        if action == "edit":
+                            # Allow the user to edit the message
+                            console.print("[yellow]Edit the message below:[/yellow]")
+                            edited_message = Prompt.ask(
+                                "Message", default=result["message_draft"]
+                            )
+                            result["message_draft"] = edited_message
+                            console.print("[green]Message updated![/green]")
+
+                            # Ask again after editing
+                            action = Prompt.ask(
+                                "[bold]Would you like to[/bold]",
+                                choices=["send", "skip"],
+                                default="send",
+                            )
+
+                        if action == "send":
+                            # Use the LinkedIn handler to automatically send the message
+                            console.print(
+                                "[bold blue]Sending message via LinkedIn...[/bold blue]"
+                            )
+
+                            # Check for previous messages first
+                            from seed_pitcher.utils.linkedin import LinkedInHandler
+                            from seed_pitcher.browsers import get_browser
+
+                            # Ensure browser is initialized
+                            if not state.get("browser"):
+                                logger.info("Initializing browser for messaging")
+                                state["browser"] = get_browser()
+
+                            linkedin_handler = LinkedInHandler(state["browser"])
+
+                            # Get previous messages with this investor (if any)
+                            previous_messages = linkedin_handler.get_previous_messages(
+                                url
+                            )
+                            if previous_messages:
+                                console.print(
+                                    f"[yellow]Found {len(previous_messages)} previous message(s) with this contact[/yellow]"
+                                )
+
+                                # Log previous messages for context
+                                logger.info(
+                                    f"Previous messages with {url}: {previous_messages}"
+                                )
+
+                                # Confirm before sending another message
+                                confirm = Prompt.ask(
+                                    "[bold]You have previous messages with this contact. Still send new message?[/bold]",
+                                    choices=["yes", "no"],
+                                    default="yes",
+                                )
+
+                                if confirm.lower() != "yes":
+                                    console.print(
+                                        "[yellow]Message sending canceled[/yellow]"
+                                    )
+                                    continue
+
+                            # Ask for the founder's name to replace placeholder if needed
+                            message_content = result["message_draft"]
+
+                            if "[Founder's Name]" in message_content:
+                                # Get founder name if not already in state
+                                if not state.get("founder_name"):
+                                    state["founder_name"] = Prompt.ask(
+                                        "[bold]Please enter your name as it should appear in the message[/bold]",
+                                        default="Founder",
+                                    )
+
+                                # Replace placeholder with actual name
+                                message_content = message_content.replace(
+                                    "[Founder's Name]", state["founder_name"]
+                                )
+                                console.print(
+                                    f"[blue]Updated message with your name: {state['founder_name']}[/blue]"
+                                )
+
+                            # Display final message for confirmation
+                            console.print("\n[bold]Final message to be sent:[/bold]\n")
+                            console.print(f"[green]{message_content}[/green]\n")
+
+                            confirm_send = Prompt.ask(
+                                "[bold]Send this message?[/bold]",
+                                choices=["yes", "no"],
+                                default="yes",
+                            )
+
+                            if confirm_send.lower() != "yes":
+                                console.print(
+                                    "[yellow]Message sending canceled[/yellow]"
+                                )
+                                continue
+
+                            # Send the message automatically
+                            with console.status(
+                                "[bold green]Sending message...[/bold green]"
+                            ) as status:
+                                success = linkedin_handler.send_message(
+                                    url, message_content
+                                )
+
+                            if success:
+                                console.print(
+                                    "[green]✓ Message sent successfully![/green]"
+                                )
+                                # Update history to reflect that message was sent
+                                result["message_sent"] = True
+                            else:
+                                console.print(
+                                    "[red]✗ Failed to send message automatically[/red]"
+                                )
+
+                                # Fallback to manual sending if automated attempt fails
+                                console.print(
+                                    "[yellow]Falling back to manual sending...[/yellow]"
+                                )
+
+                                # Copy message to clipboard for easy pasting
+                                try:
+                                    import pyperclip
+
+                                    pyperclip.copy(result["message_draft"])
+                                    console.print(
+                                        "[green]✓ Message copied to clipboard[/green]"
+                                    )
+                                except ImportError:
+                                    console.print(
+                                        "[yellow]Could not copy to clipboard - pyperclip package not installed[/yellow]"
+                                    )
+
+                                console.print(
+                                    "\n[bold]Instructions for manual sending:[/bold]"
+                                )
+                                console.print(
+                                    "1. Navigate to the LinkedIn profile in your browser"
+                                )
+                                console.print(
+                                    "2. Click the 'Message' button on their profile"
+                                )
+                                console.print(
+                                    "3. Paste the message in the text box (Ctrl+V / Cmd+V)"
+                                )
+                                console.print("4. Review and click 'Send' when ready\n")
+
+                                proceed = Prompt.ask(
+                                    "Press Enter when you've sent the message or type 'skip' to skip",
+                                    default="",
+                                )
+                                if proceed.lower() != "skip":
+                                    console.print(
+                                        "[green]✓ Message sent successfully![/green]"
+                                    )
+                                    # Update history to reflect that message was sent
+                                    result["message_sent"] = True
             except Exception as e:
                 logger.error(
                     f"Error analyzing LinkedIn profile {url}: {str(e)}", exc_info=True
@@ -276,6 +449,149 @@ def run_interactive_mode(agent, linkedin_urls=None):
                         logger.info(
                             f"Investor {url} scored above threshold: {result.get('investor_score', 0)}"
                         )
+
+                        # Display message draft if available
+                        if "message_draft" in result and result["message_draft"]:
+                            console.print(
+                                "\n[bold green]===== Message Draft =====[/bold green]"
+                            )
+                            console.print(result["message_draft"])
+                            console.print(
+                                "[bold green]=======================[/bold green]\n"
+                            )
+
+                            # Ask for confirmation or edits
+                            action = Prompt.ask(
+                                "[bold]Would you like to[/bold]",
+                                choices=["send", "edit", "skip"],
+                                default="edit",
+                            )
+
+                            if action == "edit":
+                                # Allow the user to edit the message
+                                console.print(
+                                    "[yellow]Edit the message below:[/yellow]"
+                                )
+                                edited_message = Prompt.ask(
+                                    "Message", default=result["message_draft"]
+                                )
+                                result["message_draft"] = edited_message
+                                console.print("[green]Message updated![/green]")
+
+                                # Ask again after editing
+                                action = Prompt.ask(
+                                    "[bold]Would you like to[/bold]",
+                                    choices=["send", "skip"],
+                                    default="send",
+                                )
+
+                            if action == "send":
+                                # Use the LinkedIn handler to automatically send the message
+                                console.print(
+                                    "[bold blue]Sending message via LinkedIn...[/bold blue]"
+                                )
+
+                                # Check for previous messages first
+                                from seed_pitcher.utils.linkedin import LinkedInHandler
+                                from seed_pitcher.browsers import get_browser
+
+                                # Ensure browser is initialized
+                                if not state.get("browser"):
+                                    logger.info("Initializing browser for messaging")
+                                    state["browser"] = get_browser()
+
+                                linkedin_handler = LinkedInHandler(state["browser"])
+
+                                # Get previous messages with this investor (if any)
+                                previous_messages = (
+                                    linkedin_handler.get_previous_messages(url)
+                                )
+                                if previous_messages:
+                                    console.print(
+                                        f"[yellow]Found {len(previous_messages)} previous message(s) with this contact[/yellow]"
+                                    )
+
+                                    # Log previous messages for context
+                                    logger.info(
+                                        f"Previous messages with {url}: {previous_messages}"
+                                    )
+
+                                    # Confirm before sending another message
+                                    confirm = Prompt.ask(
+                                        "[bold]You have previous messages with this contact. Still send new message?[/bold]",
+                                        choices=["yes", "no"],
+                                        default="yes",
+                                    )
+
+                                    if confirm.lower() != "yes":
+                                        console.print(
+                                            "[yellow]Message sending canceled[/yellow]"
+                                        )
+                                        continue
+
+                                # Send the message automatically
+                                with console.status(
+                                    "[bold green]Sending message...[/bold green]"
+                                ) as status:
+                                    success = linkedin_handler.send_message(
+                                        url, result["message_draft"]
+                                    )
+
+                                if success:
+                                    console.print(
+                                        "[green]✓ Message sent successfully![/green]"
+                                    )
+                                    # Update history to reflect that message was sent
+                                    result["message_sent"] = True
+                                else:
+                                    console.print(
+                                        "[red]✗ Failed to send message automatically[/red]"
+                                    )
+
+                                    # Fallback to manual sending if automated attempt fails
+                                    console.print(
+                                        "[yellow]Falling back to manual sending...[/yellow]"
+                                    )
+
+                                    # Copy message to clipboard for easy pasting
+                                    try:
+                                        import pyperclip
+
+                                        pyperclip.copy(result["message_draft"])
+                                        console.print(
+                                            "[green]✓ Message copied to clipboard[/green]"
+                                        )
+                                    except ImportError:
+                                        console.print(
+                                            "[yellow]Could not copy to clipboard - pyperclip package not installed[/yellow]"
+                                        )
+
+                                    console.print(
+                                        "\n[bold]Instructions for manual sending:[/bold]"
+                                    )
+                                    console.print(
+                                        "1. Navigate to the LinkedIn profile in your browser"
+                                    )
+                                    console.print(
+                                        "2. Click the 'Message' button on their profile"
+                                    )
+                                    console.print(
+                                        "3. Paste the message in the text box (Ctrl+V / Cmd+V)"
+                                    )
+                                    console.print(
+                                        "4. Review and click 'Send' when ready\n"
+                                    )
+
+                                    proceed = Prompt.ask(
+                                        "Press Enter when you've sent the message or type 'skip' to skip",
+                                        default="",
+                                    )
+                                    if proceed.lower() != "skip":
+                                        console.print(
+                                            "[green]✓ Message sent successfully![/green]"
+                                        )
+                                        # Update history to reflect that message was sent
+                                        result["message_sent"] = True
                     else:
                         logger.info(
                             f"Investor {url} scored below threshold: {result.get('investor_score', 0)}"

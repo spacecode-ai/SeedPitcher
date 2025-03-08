@@ -53,7 +53,9 @@ class PlaywrightBrowser:
                 # If connection fails, launch a new browser instance
                 print(f"Could not connect to existing Chrome instance: {str(e)}")
                 print("Launching new browser instance...")
-                self.browser = self.playwright.chromium.launch(headless=False)
+                self.browser = self.playwright.chromium.launch(
+                    headless=False, slow_mo=100
+                )
                 self.context = self.browser.new_context()
                 self.page = self.context.new_page()
                 print("Successfully launched new Chrome browser")

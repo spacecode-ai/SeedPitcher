@@ -14,59 +14,93 @@ def draft_investor_message(
     """Draft a personalized message to an investor based on their profile and analysis."""
     # Create prompt template for message drafting
     template = """
-    You are an expert in crafting effective fundraising messages for startups to send to potential investors.
-    Your task is to draft a personalized LinkedIn message from a startup founder to a potential investor.
+    You are an expert in crafting effective initial outreach messages for startups to send to potential investors.
+    Your task is to draft a brief, personalized LinkedIn message from a startup founder to a potential investor.
     
     ### Investor Information:
     - Name: {investor_name}
     - Current position: {investor_headline}
     - Fund/Company: {investor_company}
-    - Investment focus: {investment_focus}
-    - Recent investments: {recent_investments}
     
     ### Startup Information:
     - Elevator pitch: {elevator_pitch}
-    - Additional details from pitch deck: {pitch_deck_summary}
     
-    Draft a personalized, concise LinkedIn message (max 300 words) to this investor that:
-    1. Establishes a personal connection if possible
-    2. Briefly introduces the startup and its value proposition
-    3. Explains why this specific investor would be interested (based on their investment focus)
-    4. Mentions recent investments they've made only if relevant
-    5. Requests a brief call or meeting to discuss further
-    6. Maintains a professional but conversational tone
-    7. Avoids generic phrases that could apply to any investor
+    Draft a short, personalized LinkedIn message (max 120 words) to this investor that:
+    1. Establishes a brief personal connection if possible
+    2. Clearly identifies the founder by name and startup name
+    3. Includes specific details from the elevator pitch - focus on the problem being solved and unique value proposition
+    4. Mentions 1-2 SPECIFIC and CONCRETE details about what the startup is building (extracted directly from the elevator pitch)
+    5. Expresses interest in connecting but DOES NOT reveal detailed fundraising intentions
+    6. Asks if they'd like to learn more
+    7. Maintains a professional but conversational tone
     
     IMPORTANT GUIDELINES:
-    - Keep it brief and to the point
-    - Personalize for this specific investor
-    - Focus on value proposition, not just features
-    - Don't oversell or use hyperbole
+    - Be SPECIFIC about what the startup does - avoid vague terms like "what we're building"
+    - Use ACTUAL DETAILS from the elevator pitch - don't be generic
+    - Extract and include at least one CONCRETE achievement, metric, or specific technology mentioned in the elevator pitch
+    - DO NOT invent or assume ANY details about the startup - use ONLY information explicitly provided in the elevator pitch
+    - DO NOT make generic references to industries or technologies if they are not in the elevator pitch
+    - NEVER mention "space technology", "space infrastructure" or similar terms unless they are explicitly in the elevator pitch
+    - DO NOT mention the investor's investment focus or portfolio companies
+    - DO NOT reveal detailed fundraising information
     - Be respectful of their time
-    - Don't attach any files or suggest sharing documents yet
     
-    The message should feel like it was written specifically for this investor, not a template.
+    The message should include SPECIFIC details from the elevator pitch while maintaining a conversational tone.
     """
 
-    # Format variables for the prompt
-    investor_name = profile.get("name", "")
-    investor_headline = profile.get("headline", "")
-    investor_company = profile.get("company", "") or analysis.get("fund_name", "")
-    investment_focus = ", ".join(analysis.get("investment_focus", []))
+    # Format variables for the prompt with robust error handling
+    try:
+        # First log what we've received to help with debugging
+        import logging
 
-    # Format recent investments
-    recent_investments = ", ".join(
-        analysis.get("web_info", {}).get("recent_investments", [])[:3]
-    )
+        logger = logging.getLogger("seed_pitcher")
+        logger.info(
+            f"Profile data: {profile.get('name', 'Unknown')}, Analysis: {analysis.get('is_investor', 'Unknown')}"
+        )
+        if startup_info:
+            logger.info(
+                f"Startup elevator pitch: {startup_info.get('elevator_pitch', 'Not provided')}"
+            )
 
-    # Get startup info
-    elevator_pitch = startup_info.get("elevator_pitch", "")
+        investor_name = profile.get("name", "Investor") if profile else "Investor"
+        investor_headline = profile.get("headline", "") if profile else ""
 
-    # Create a summary of the pitch deck if available
-    pitch_deck_text = startup_info.get("pitch_deck_text", "")
-    pitch_deck_summary = (
-        summarize_pitch_deck(pitch_deck_text, llm) if pitch_deck_text else ""
-    )
+        # Try multiple sources for company name with fallbacks
+        investor_company = ""
+        if profile:
+            if profile.get("company"):
+                investor_company = profile.get("company")
+            elif profile.get("fund"):
+                investor_company = profile.get("fund")
+            elif profile.get("experience") and len(profile.get("experience")) > 0:
+                # Extract from first experience item
+                investor_company = profile["experience"][0].get("company", "")
+
+        # Fallback to analysis if available
+        if not investor_company and analysis:
+            investor_company = analysis.get("fund_name", "")
+
+        # Get startup info
+        elevator_pitch = ""
+        if startup_info:
+            elevator_pitch = startup_info.get("elevator_pitch", "")
+            if elevator_pitch and "." in elevator_pitch:
+                elevator_pitch = (
+                    elevator_pitch.split(".")[0] + "."
+                )  # Just the first sentence
+    except Exception as e:
+        import logging
+
+        logging.getLogger(__name__).error(
+            f"Error preparing message variables: {str(e)}", exc_info=True
+        )
+        # Set fallback values
+        investor_name = "Investor"
+        investor_headline = ""
+        investor_company = ""
+        elevator_pitch = "Our startup has an innovative solution."
+
+    # Startup info is already handled in the robust variable preparation above
 
     # Create the prompt
     prompt = ChatPromptTemplate.from_template(template)
@@ -76,16 +110,127 @@ def draft_investor_message(
         investor_name=investor_name,
         investor_headline=investor_headline,
         investor_company=investor_company,
-        investment_focus=investment_focus,
-        recent_investments=recent_investments,
         elevator_pitch=elevator_pitch,
-        pitch_deck_summary=pitch_deck_summary,
     )
 
-    # Call LLM to generate the message
-    response = llm.invoke([formatted_prompt])
+    # Call LLM to generate the message with error handling
+    try:
+        response = llm.invoke([formatted_prompt])
+        content = response.content
 
-    return response.content
+        # Check if the response contains comments about insufficient information instead of a message
+        low_info_indicators = [
+            "not enough information",
+            "insufficient details",
+            "would need more",
+            "cannot craft",
+            "would require",
+            "additional details",
+            "more information",
+        ]
+
+        if any(indicator in content.lower() for indicator in low_info_indicators):
+            # Generate a fallback message that uses whatever information is available
+            import logging
+
+            logger = logging.getLogger("seed_pitcher")
+            logger.warning(
+                "LLM returned commentary instead of a message. Using fallback template."
+            )
+
+            # Extract company name from elevator pitch if available
+            company_name = "my startup"
+            import re
+
+            if elevator_pitch:
+                # Try to extract company name (usually at the beginning of the pitch)
+                company_match = re.search(
+                    r"([A-Z][A-Za-z0-9.]+(?:\.[A-Z][A-Za-z0-9]+)?)", elevator_pitch
+                )
+                if company_match:
+                    company_name = company_match.group(1)
+
+            # Extract what the company does - use more specific matching for better descriptions
+            what_it_does = ""
+            if elevator_pitch:
+                # Try to extract specific phrases about what the company does
+                # First look for phrases after "that" or "which"
+                does_match = re.search(r"(that|which)\s+([^.]+)\.", elevator_pitch)
+                if does_match:
+                    what_it_does = does_match.group(2).strip()
+                # Look for phrases with "automates" or "automation"
+                elif re.search(r"automat(es|ing|ion)", elevator_pitch, re.IGNORECASE):
+                    auto_match = re.search(
+                        r"automat(es|ing|ion)\s+([^.]+)(\.|$)",
+                        elevator_pitch,
+                        re.IGNORECASE,
+                    )
+                    if auto_match:
+                        what_it_does = f"automates {auto_match.group(2).strip()}"
+                # Look for "minimizes" or similar verbs
+                elif re.search(r"minimiz(es|ing)", elevator_pitch, re.IGNORECASE):
+                    min_match = re.search(
+                        r"minimiz(es|ing)\s+([^.]+)(\.|$)",
+                        elevator_pitch,
+                        re.IGNORECASE,
+                    )
+                    if min_match:
+                        what_it_does = f"minimizes {min_match.group(2).strip()}"
+                # Look for patterns about "allowing" or "enabling"
+                elif re.search(r"(allow|enable)(s|ing)", elevator_pitch, re.IGNORECASE):
+                    allow_match = re.search(
+                        r"(allow|enable)(s|ing)\s+([^.]+)(\.|$)",
+                        elevator_pitch,
+                        re.IGNORECASE,
+                    )
+                    if allow_match:
+                        what_it_does = f"helps {allow_match.group(3).strip()}"
+                # If none of those matched, use the first part of the first sentence excluding company name
+                else:
+                    # Get first clause that contains a verb (likely describes what it does)
+                    first_sentence = (
+                        elevator_pitch.split(".")[0]
+                        if "." in elevator_pitch
+                        else elevator_pitch
+                    )
+                    # Split by common conjunctions and take second part (often contains what it does)
+                    if " by " in first_sentence:
+                        second_part = first_sentence.split(" by ")[1].strip()
+                        if len(second_part) < 80:
+                            what_it_does = second_part
+                    # Fall back to using a concise version of first sentence
+                    elif len(first_sentence) < 80:
+                        what_it_does = first_sentence
+
+            # Generate a simple, concise message that uses whatever info we have
+            fallback_msg = f"# LinkedIn Message to {investor_name}\n\nHi {investor_name},\n\nI noticed your work as {investor_headline} and thought you might be interested in what we're building at {company_name}."
+
+            # Add what the company does if we have that info
+            if what_it_does:
+                fallback_msg += f" We {what_it_does}."
+
+            fallback_msg += "\n\nWould you be open to a brief conversation to explore if there might be alignment between your investment interests and our startup?\n\nThanks for considering,\n[Founder's Name]"
+
+            return fallback_msg
+
+        return content
+    except Exception as e:
+        import logging
+
+        logging.getLogger("seed_pitcher").error(
+            f"Error calling LLM for message draft: {str(e)}", exc_info=True
+        )
+        # Improved fallback template message that properly incorporates the elevator pitch
+        # Make sure it doesn't contain generic references to 'space' or other incorrect info
+        if (
+            not elevator_pitch
+            or elevator_pitch == "Our startup has an innovative solution."
+        ):
+            # If we don't have a proper elevator pitch, be very generic
+            return f"Hi {investor_name}, I noticed your work at {investor_company} and wanted to connect. I'm working on an early-stage startup and would value your perspective. Would you be open to a quick conversation?".strip()
+        else:
+            # Use the actual elevator pitch
+            return f"Hi {investor_name}, I noticed your work at {investor_company} and wanted to connect. We're working on {elevator_pitch} I'd value your perspective on our approach. Would you be open to a brief conversation?".strip()
 
 
 def summarize_pitch_deck(pitch_deck_text: str, llm: BaseChatModel) -> str:
