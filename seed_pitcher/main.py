@@ -478,6 +478,7 @@ def run_interactive_mode(agent, linkedin_urls=None):
             search_query = Prompt.ask("Enter your LinkedIn search query")
             state = dict(initial_state)
             state["action"] = "search_profiles"
+            print(f"search query is {search_query}")
             state["query"] = search_query
             agent.invoke(state)
         elif choice == "3":

@@ -3,6 +3,7 @@
 import time
 from typing import List, Dict, Any
 from urllib.parse import urlparse, urlunparse
+from seed_pitcher.browsers.debug_utils import print_all_links, find_elements_containing_url_pattern, examine_linkedin_search_results
 
 
 class LinkedInHandler:
@@ -80,13 +81,13 @@ class LinkedInHandler:
 
         return profile_urls
 
-    def search_profiles(self, query: str, max_pages: int = 3) -> List[str]:
+    def search_profiles(self, query: str, max_pages: int = 1) -> List[str]:
         """Search for profiles on LinkedIn."""
         # Encode query for URL
         from urllib.parse import quote
 
         encoded_query = quote(query)
-
+        print(f'encoded query is {encoded_query}')
         # Navigate to search results
         search_url = f"{self.base_url}/search/results/people/?keywords={encoded_query}"
         self.browser.navigate(search_url)
@@ -96,57 +97,16 @@ class LinkedInHandler:
 
         for page in range(max_pages):
             # Find all search result elements
+            print(f"page entered {page}")
             result_cards = self.browser.find_elements(
-                ".reusable-search__result-container"
+                "a[href*='/in/']"
             )
 
-            for card in result_cards:
-                try:
-                    # Extract profile link
-                    profile_link = self.browser.find_element("a.app-aware-link", card)
-                    href = self.browser.get_attribute(profile_link, "href")
-
-                    # Extract only profile URLs
-                    if "/in/" in href:
-                        # Normalize URL
-                        parsed_url = urlparse(href)
-                        clean_path = "/".join(
-                            parsed_url.path.split("/")[:3]
-                        )  # Keep only /in/username part
-                        normalized_url = urlunparse(
-                            (
-                                parsed_url.scheme,
-                                parsed_url.netloc,
-                                clean_path,
-                                "",
-                                "",
-                                "",
-                            )
-                        )
-
-                        profile_urls.append(normalized_url)
-                except:
-                    continue
-
-            # Scroll to load more
-            self.browser.scroll(1000)
-            time.sleep(2)
-
-            # Check if pagination exists and click next
-            try:
-                next_button = self.browser.find_element(
-                    "button.artdeco-pagination__button--next"
-                )
-                if next_button:
-                    self.browser.click(next_button)
-                    time.sleep(3)
-                else:
-                    # No more pages
-                    break
-            except:
-                # No pagination, probably only one page of results
-                break
-
+            for result_card in result_cards:
+                href = self.browser.get_attribute(result_card, "href")
+                profile_urls.append(href)
+        with open("output.txt", "w") as f:
+            f.write(f"Found {(profile_urls)} profiles")
         return profile_urls
 
     def _safe_navigate(

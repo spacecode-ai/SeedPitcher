@@ -88,16 +88,27 @@ class PlaywrightBrowser:
                 f"or that playwright can launch a new browser instance."
             )
 
-    def navigate(self, url: str) -> None:
-        """Navigate to a URL."""
+    def navigate(self, url: str, timeout: int = 3000, wait_until: str = "domcontentloaded") -> None:
+        """Navigate to a URL.
+        
+        Args:
+            url: The URL to navigate to
+            timeout: Maximum navigation time in milliseconds
+            wait_until: Navigation condition to wait for, options are:
+                - 'domcontentloaded' - wait until DOMContentLoaded event
+                - 'load' - wait until load event
+                - 'networkidle' - wait until there are no network connections for 500ms
+        """
         if not self.page:
             print("Cannot navigate: browser not initialized")
             return
 
         try:
-            self.page.goto(url)
-            self.page.wait_for_load_state("networkidle")
+            # First navigate with the specified wait_until condition
+            self.page.goto(url, timeout=timeout, wait_until=wait_until)
+            
         except Exception as e:
+            pass
             print(f"Error navigating to {url}: {str(e)}")
 
     def get_page_source(self) -> str:
@@ -135,6 +146,8 @@ class PlaywrightBrowser:
         if not self.page:
             print("Cannot find elements: browser not initialized")
             return []
+        # Don't try to print all elements here as it will affect the normal functionality
+        # Instead use print_all_elements() method when needed
 
         try:
             if by == "css":
@@ -147,6 +160,154 @@ class PlaywrightBrowser:
         except Exception as e:
             print(f"Error finding elements {selector}: {str(e)}")
             return []
+            
+    def print_all_elements(self, max_elements: int = 100, include_attrs: bool = True) -> None:
+        """Print all elements on the page with their details.
+        
+        Args:
+            max_elements: Maximum number of elements to print
+            include_attrs: Whether to include element attributes
+        """
+        if not self.page:
+            print("Cannot print elements: browser not initialized")
+            return
+            
+        try:
+            # Execute JavaScript to get all elements and their details
+            elements_info = self.page.evaluate("""
+                () => {
+                    const results = [];
+                    const allElements = document.querySelectorAll('*');
+                    
+                    // Limit to avoid overwhelming output
+                    const maxElements = Math.min(allElements.length, arguments[0]);
+                    
+                    for (let i = 0; i < maxElements; i++) {
+                        const el = allElements[i];
+                        const tagName = el.tagName.toLowerCase();
+                        
+                        // Skip some non-visible or less useful elements
+                        if (['script', 'style', 'meta', 'link', 'head'].includes(tagName)) {
+                            continue;
+                        }
+                        
+                        // Build selector parts
+                        let idSelector = el.id ? `#${el.id}` : '';
+                        
+                        let classSelector = '';
+                        if (el.classList && el.classList.length > 0) {
+                            classSelector = Array.from(el.classList)
+                                .map(c => `.${c}`)
+                                .join('');
+                        }
+                        
+                        // Basic info
+                        const info = {
+                            tagName,
+                            id: el.id || '',
+                            classes: el.className || '',
+                            textContent: (el.textContent || '').trim().substring(0, 50),
+                            selector: `${tagName}${idSelector}${classSelector}`,
+                            href: el.href || '',
+                            src: el.src || '',
+                        };
+                        
+                        // Include all attributes if requested
+                        if (arguments[1]) {
+                            info.attributes = {};
+                            for (const attr of el.attributes) {
+                                info.attributes[attr.name] = attr.value;
+                            }
+                        }
+                        
+                        results.push(info);
+                    }
+                    
+                    return results;
+                }
+            """, max_elements, include_attrs)
+            
+            # Print the results
+            print(f"\nFound {len(elements_info)} elements (limited to {max_elements}):\n")
+            
+            for i, info in enumerate(elements_info):
+                print(f"Element {i+1}: <{info['tagName']}>")
+                print(f"  Selector: {info['selector']}")
+                
+                if info['textContent']:
+                    print(f"  Text: {info['textContent']}")
+                    
+                if info['href']:
+                    print(f"  Href: {info['href']}")
+                
+                if include_attrs and 'attributes' in info:
+                    attr_str = ", ".join([f"{k}='{v}'" for k, v in info['attributes'].items()])
+                    print(f"  Attributes: {attr_str}")
+                    
+                print("")
+                
+        except Exception as e:
+            print(f"Error printing elements: {str(e)}")
+            
+    def print_selector_matches(self, selector: str, limit: int = 10) -> None:
+        """Print elements that match a specific selector.
+        
+        Args:
+            selector: CSS or XPath selector to match
+            limit: Maximum number of matching elements to print
+        """
+        if not self.page:
+            print("Cannot find matches: browser not initialized")
+            return
+            
+        try:
+            # Determine if this is an XPath selector
+            is_xpath = selector.startswith("xpath=") or selector.startswith("/")
+            
+            if is_xpath:
+                if not selector.startswith("xpath="):
+                    selector = f"xpath={selector}"
+                    
+            # Get elements
+            elements = self.page.query_selector_all(selector)
+            
+            print(f"\nFound {len(elements)} elements matching '{selector}'")
+            
+            # Limit number of elements to display
+            elements = elements[:limit]
+            
+            for i, element in enumerate(elements):
+                # Get basic element info
+                tag_name = element.evaluate("el => el.tagName.toLowerCase()")
+                inner_text = element.inner_text()
+                inner_text = inner_text[:50] + "..." if inner_text and len(inner_text) > 50 else inner_text
+                
+                # Get attributes
+                attrs = element.evaluate("""
+                    el => {
+                        const result = {};
+                        for (const attr of el.attributes) {
+                            result[attr.name] = attr.value;
+                        }
+                        return result;
+                    }
+                """)
+                
+                # Print element information
+                print(f"\nMatch {i+1}: <{tag_name}>")
+                if inner_text:
+                    print(f"  Text: {inner_text}")
+                    
+                # Print href attribute if it exists
+                if 'href' in attrs:
+                    print(f"  Href: {attrs['href']}")
+                    
+                # Print a few key attributes
+                for attr in ['id', 'class', 'name', 'aria-label']:
+                    if attr in attrs and attrs[attr]:
+                        print(f"  {attr}: {attrs[attr]}")
+        except Exception as e:
+            print(f"Error printing selector matches: {str(e)}")
 
     def click(self, element: Any) -> None:
         """Click on an element with retry logic and better error handling."""

@@ -57,9 +57,7 @@ seedpitcher run --threshold 0.8
 # Choose LLM model
 seedpitcher run --llm-model claude-3-7
 
-# Use your founder name in messages
 seedpitcher run --founder-name "Your Name"
-```
 
 ### Using Pin AI Integration
 

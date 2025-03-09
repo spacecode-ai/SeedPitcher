@@ -23,6 +23,7 @@ class AgentState(TypedDict):
     history: List[Dict[str, Any]]
     urls_to_process: List[str]
     browser: Any
+    query: str
 
 
 def create_browser():
@@ -102,8 +103,9 @@ def search_profiles(state: AgentState) -> AgentState:
     """Search for specific profiles on LinkedIn."""
     from seed_pitcher.utils.linkedin import LinkedInHandler
 
-    query = state.get("query", "")
+    query = state.get("query")
     linkedin = LinkedInHandler(state["browser"])
+    print(f'query is {query}')
     profiles = linkedin.search_profiles(query)
 
     state["urls_to_process"] = profiles
