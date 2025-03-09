@@ -14,6 +14,7 @@ An agentic system to assist with seed fundraising for early-stage startups. Seed
 - Analyzes investor fit based on investment history, stages, and sectors
 - Drafts personalized outreach messages
 - Never sends messages automatically - you always have the final say
+- Supports integration with Pin AI platform for chat-based interaction
 
 ## Installation
 
@@ -36,6 +37,7 @@ pip install -e .
 - LinkedIn account (you must be logged in to LinkedIn in your browser)
 - API keys for LLMs (OpenAI, Anthropic, or DeepSeek)
 - Optional: simular.ai browser (if not available, will fall back to Playwright)
+- Optional: Pin AI API key (for Pin AI platform integration)
 
 ## Usage
 
@@ -54,16 +56,37 @@ seedpitcher run --threshold 0.8
 
 # Choose LLM model
 seedpitcher run --llm-model claude-3-7
+
+# Use your founder name in messages
+seedpitcher run --founder-name "Your Name"
 ```
+
+### Using Pin AI Integration
+
+SeedPitcher can be deployed as an agent on the Pin AI platform, allowing users to interact with it through chat:
+
+```bash
+# Register a new agent on the Pin AI platform
+seedpitcher pinai --pinai-key "your-pinai-api-key" --pitch-deck /path/to/your/pitch_deck.pdf --founder-name "Your Name" --register-only
+
+# Start an existing agent (using previously registered agent-id)
+seedpitcher pinai --pinai-key "your-pinai-api-key" --pitch-deck /path/to/your/pitch_deck.pdf --agent-id 123
+
+# Start with alternative model
+seedpitcher pinai --llm-model gpt-4o --pitch-deck /path/to/your/pitch_deck.pdf
+```
+
+Once running as a Pin AI agent, users can interact with SeedPitcher by sending LinkedIn URLs to be analyzed through the Pin AI chat interface.
 
 ## Configuration
 
 SeedPitcher will create a configuration file at `~/.seed_pitcher/config.json`. You can edit this file to configure:
 
-- API keys
+- API keys (OpenAI, Anthropic, DeepSeek, Pin AI)
 - Browser preferences
 - Remote debugging port (if using Playwright)
 - Default investor scoring threshold
+- Founder name for personalized messages
 
 ## Browser Setup
 

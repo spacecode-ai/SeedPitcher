@@ -689,5 +689,52 @@ def run_interactive_mode(agent, linkedin_urls=None):
                 logger.info(f"Finished processing URL: {url}")
 
 
+@app.command()
+def pinai(
+    api_key: Optional[str] = typer.Option(
+        None, "--pinai-key", help="Pin AI API key (can also be set via environment variable PINAI_API_KEY)"
+    ),
+    agent_id: Optional[int] = typer.Option(
+        None, "--agent-id", help="Existing Pin AI agent ID to use. If not provided, a new agent will be registered."
+    ),
+    register_only: bool = typer.Option(
+        False, "--register-only", help="Only register the agent and display its ID, then exit."
+    ),
+):
+    """
+    Start SeedPitcher as a Pin AI agent.
+    
+    This mode connects SeedPitcher to the Pin AI platform, allowing users
+    to interact with it through the Pin AI interface. All startup information
+    will be gathered through the chat interface.
+    """
+    from seed_pitcher.pinai import start_pinai_agent
+    
+    # Set defaults for auto model selection
+    if config.ANTHROPIC_API_KEY:
+        llm_model = "claude-3-7-sonnet"
+        console.print("Using Claude 3.7 Sonnet (ANTHROPIC_API_KEY detected)")
+    elif config.OPENAI_API_KEY:
+        llm_model = "gpt-4o"
+        console.print("Using GPT-4o (OPENAI_API_KEY detected)")
+    else:
+        llm_model = "deepseek-r1"
+        console.print("Using DeepSeek Coder API (no API keys detected)")
+            
+    config.LLM_MODEL = llm_model
+    
+    # Start the Pin AI agent
+    try:
+        start_pinai_agent(
+            api_key=api_key,
+            agent_id=agent_id,
+            register_only=register_only
+        )
+    except KeyboardInterrupt:
+        console.print("[yellow]Agent stopped by user[/yellow]")
+    except Exception as e:
+        console.print(f"[red]Error running agent: {str(e)}[/red]")
+        raise typer.Exit(code=1)
+
 if __name__ == "__main__":
     app()
