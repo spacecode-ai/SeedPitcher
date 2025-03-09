@@ -846,46 +846,47 @@ class LinkedInHandler:
                 # Continue anyway since this is just a visibility enhancement
 
             # Click the message button with increased timeout and multiple methods
-            logger.info("Clicking message button")
+            # logger.info("Clicking message button")
+            # self.browser.click(message_button)
             # Try several approaches in sequence - one of them should work
-            for click_attempt in range(3):
-                try:
-                    # Set a higher timeout for the click operation
-                    if click_attempt == 0:
-                        # First try: regular click with higher timeout
-                        logger.info("Trying standard click with increased timeout")
-                        self.browser.page.set_default_timeout(60000)  # 60 seconds
-                        self.browser.click(message_button)
-                    elif click_attempt == 1:
-                        # Second try: JavaScript click
-                        logger.info("Trying JavaScript click")
-                        self.browser.execute_script(
-                            "arguments[0].click();", message_button
-                        )
-                    else:
-                        # Third try: direct dispatch click event
-                        logger.info("Trying direct dispatch click event")
-                        self.browser.page.evaluate(
-                            "\n                            (element) => {\n                                const clickEvent = new MouseEvent('click', {\n                                    view: window,\n                                    bubbles: true,\n                                    cancelable: true,\n                                    buttons: 1\n                                });\n                                element.dispatchEvent(clickEvent);\n                            }\n                        ",
-                            message_button,
-                        )
+            # for click_attempt in range(3):
+            #     try:
+            #         # Set a higher timeout for the click operation
+            #         if click_attempt == 0:
+            #             # First try: regular click with higher timeout
+            #             logger.info("Trying standard click with increased timeout")
+            #             self.browser.page.set_default_timeout(60000)  # 60 seconds
+            #             self.browser.click(message_button)
+            #         elif click_attempt == 1:
+            #             # Second try: JavaScript click
+            #             logger.info("Trying JavaScript click")
+            #             self.browser.execute_script(
+            #                 "arguments[0].click();", message_button
+            #             )
+            #         else:
+            #             # Third try: direct dispatch click event
+            #             logger.info("Trying direct dispatch click event")
+            #             self.browser.page.evaluate(
+            #                 "\n                            (element) => {\n                                const clickEvent = new MouseEvent('click', {\n                                    view: window,\n                                    bubbles: true,\n                                    cancelable: true,\n                                    buttons: 1\n                                });\n                                element.dispatchEvent(clickEvent);\n                            }\n                        ",
+            #                 message_button,
+            #             )
 
-                    # Wait longer after clicking, especially for slow connections
-                    time.sleep(3)
-                    logger.info("Message button clicked successfully")
-                    break  # Success - exit the loop
+            #         # Wait longer after clicking, especially for slow connections
+            #         time.sleep(3)
+            #         logger.info("Message button clicked successfully")
+            #         break  # Success - exit the loop
 
-                except Exception as click_error:
-                    logger.warning(
-                        f"Click attempt {click_attempt + 1} failed: {str(click_error)}"
-                    )
-                    # Only return failure on the last attempt
-                    if click_attempt == 2:
-                        logger.error(f"All methods to click message button failed")
-                        return False
+            #     except Exception as click_error:
+            #         logger.warning(
+            #             f"Click attempt {click_attempt + 1} failed: {str(click_error)}"
+            #         )
+            #         # Only return failure on the last attempt
+            #         if click_attempt == 2:
+            #             logger.error(f"All methods to click message button failed")
+            #             return False
 
-                # Wait between attempts
-                time.sleep(2)
+            #     # Wait between attempts
+            #     time.sleep(2)
 
             # Wait longer for the message modal to fully appear
             logger.info("Waiting for message window to fully appear")
@@ -893,133 +894,124 @@ class LinkedInHandler:
 
             # Look for message input field with expanded selectors
             message_input_selectors = [
-                "div.msg-form__contenteditable",
-                "div[role='textbox']",
-                "div.msg-form__msg-content-container",
-                "div.msg-form__message-texteditor",
-                "div.artdeco-text-input--input",
-                # More specific selectors
-                "div.msg-form__contenteditable[contenteditable='true']",
-                "div[aria-label='Write a message…']",
-                "div.msg-compose-form__message-text",
-                # Try to find any editable div in the message form
-                "div.msg-form div[contenteditable='true']",
+                "div[role=textbox]"
             ]
 
-            # Try multiple times with a delay to find the input field
-            # Sometimes it takes time for the message modal to fully render
-            message_input = None
-            max_attempts = 3
+            # # Try multiple times with a delay to find the input field
+            # # Sometimes it takes time for the message modal to fully render
+            # message_input = None
+            # max_attempts = 3
 
-            for attempt in range(max_attempts):
-                logger.info(
-                    f"Message input search attempt {attempt + 1}/{max_attempts}"
-                )
+            # for attempt in range(max_attempts):
+            #     logger.info(
+            #         f"Message input search attempt {attempt + 1}/{max_attempts}"
+            #     )
 
-                for selector in message_input_selectors:
-                    try:
-                        message_input = self.browser.find_element(selector)
-                        if message_input:
-                            logger.info(
-                                f"Found message input with selector: {selector}"
-                            )
-                            break
-                    except Exception as e:
-                        continue
+            #     for selector in message_input_selectors:
+            #         try:
+            #             message_input = self.browser.find_element(selector)
+            #             if message_input:
+            #                 logger.info(
+            #                     f"Found message input with selector: {selector}"
+            #                 )
+            #                 break
+            #         except Exception as e:
+            #             continue
 
-                if message_input:
-                    break
+            #     if message_input:
+            #         break
 
-                # If we didn't find it, wait and try again
-                logger.info("Message input not found yet, waiting and trying again...")
-                time.sleep(3)
+            #     # If we didn't find it, wait and try again
+            #     logger.info("Message input not found yet, waiting and trying again...")
+            #     time.sleep(3)
 
-            if not message_input:
-                # Last resort: try to find the input using a screenshot and visual indicator
-                try:
-                    logger.warning(
-                        "Could not find message input field using selectors, trying visual approach"
-                    )
-                    # Look for any text container inside the message modal
-                    text_containers = self.browser.find_elements(
-                        "div.msg-overlay-conversation-bubble__content-wrapper div"
-                    )
+            # if not message_input:
+            #     # Last resort: try to find the input using a screenshot and visual indicator
+            #     try:
+            #         logger.warning(
+            #             "Could not find message input field using selectors, trying visual approach"
+            #         )
+            #         # Look for any text container inside the message modal
+            #         text_containers = self.browser.find_elements(
+            #             "div.msg-overlay-conversation-bubble__content-wrapper div"
+            #         )
 
-                    # Try clicking the bottom-most div in the conversation which might be the input area
-                    if text_containers:
-                        logger.info(
-                            f"Found {len(text_containers)} potential text containers"
-                        )
-                        # Get the last (bottom-most) container
-                        last_container = text_containers[-1]
-                        logger.info("Trying to click the bottom-most text container")
-                        self.browser.click(last_container)
-                        time.sleep(1)
+            #         # Try clicking the bottom-most div in the conversation which might be the input area
+            #         if text_containers:
+            #             logger.info(
+            #                 f"Found {len(text_containers)} potential text containers"
+            #             )
+            #             # Get the last (bottom-most) container
+            #             last_container = text_containers[-1]
+            #             logger.info("Trying to click the bottom-most text container")
+            #             self.browser.click(last_container)
+            #             time.sleep(1)
 
-                        # Now try to find the input field again
-                        for selector in message_input_selectors:
-                            try:
-                                message_input = self.browser.find_element(selector)
-                                if message_input:
-                                    logger.info(
-                                        f"Found message input after clicking container"
-                                    )
-                                    break
-                            except Exception as e:
-                                continue
-                except Exception as e:
-                    logger.error(
-                        f"Error in visual approach for finding message input: {str(e)}"
-                    )
+            #             # Now try to find the input field again
+            #             for selector in message_input_selectors:
+            #                 try:
+            #                     message_input = self.browser.find_element(selector)
+            #                     if message_input:
+            #                         logger.info(
+            #                             f"Found message input after clicking container"
+            #                         )
+            #                         break
+            #                 except Exception as e:
+            #                     continue
+            #     except Exception as e:
+            #         logger.error(
+            #             f"Error in visual approach for finding message input: {str(e)}"
+            #         )
 
-            if not message_input:
-                logger.warning(
-                    "Could not find message input field after multiple attempts"
-                )
-                return False
+            # if not message_input:
+            #     logger.warning(
+            #         "Could not find message input field after multiple attempts"
+            #     )
+            #     return False
 
-            # Type the message
+            # # Type the message
             logger.info("Typing message")
-            self.browser.fill(message_input, message)
+            # self.browser.fill(message_input, message)
+            self.browser.page.keyboard.insert_text(message)
             time.sleep(1)
 
-            # Look for send button
-            send_button_selectors = [
-                "button.msg-form__send-button",
-                "button[type='submit']",
-                "button.artdeco-button--primary",
-            ]
+            # # Look for send button
+            # send_button_selectors = [
+            #     "button.msg-form__send-button",
+            #     "button[type='submit']",
+            #     "button.artdeco-button--primary",
+            # ]
 
-            send_button = None
-            for selector in send_button_selectors:
-                try:
-                    send_button = self.browser.find_element(selector)
-                    if send_button:
-                        logger.info(f"Found send button with selector: {selector}")
-                        break
-                except Exception as e:
-                    continue
+            # send_button = None
+            # for selector in send_button_selectors:
+            #     try:
+            #         send_button = self.browser.find_element(selector)
+            #         if send_button:
+            #             logger.info(f"Found send button with selector: {selector}")
+            #             break
+            #     except Exception as e:
+            #         continue
 
-            if not send_button:
-                logger.warning("Could not find send button")
-                return False
+            # if not send_button:
+            #     logger.warning("Could not find send button")
+            #     return False
 
-            # Click the send button
-            logger.info("Clicking send button")
-            try:
-                self.browser.click(send_button)
-                time.sleep(2)
-            except Exception as e:
-                logger.warning(f"Failed to click send button: {str(e)}")
-                # Try an alternative approach
-                try:
-                    self.browser.execute_script("arguments[0].click();", send_button)
-                    time.sleep(2)
-                except Exception as e2:
-                    logger.error(f"All methods to click send button failed: {str(e2)}")
-                    return False
+            # # Click the send button
+            # logger.info("Clicking send button")
+            # try:
+            #     self.browser.click(send_button)
+            #     time.sleep(2)
+            # except Exception as e:
+            #     logger.warning(f"Failed to click send button: {str(e)}")
+            #     # Try an alternative approach
+            #     try:
+            #         self.browser.execute_script("arguments[0].click();", send_button)
+            #         time.sleep(2)
+            #     except Exception as e2:
+            #         logger.error(f"All methods to click send button failed: {str(e2)}")
+            #         return False
 
-            logger.info("Message sent successfully")
+            # logger.info("Message sent successfully")
             return True
 
         except Exception as e:
