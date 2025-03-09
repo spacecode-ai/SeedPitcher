@@ -1,6 +1,8 @@
 import os
+import sys
 import json
 import logging
+import subprocess
 from pathlib import Path
 from typing import Optional, List
 import typer
@@ -22,6 +24,10 @@ logger = logging.getLogger("seed_pitcher")
 app = typer.Typer(name="seedpitcher")
 console = Console()
 
+# Create a browser server command group
+browser_server = typer.Typer(name="browser-server", help="Manage the browser server")
+app.add_typer(browser_server)
+
 
 @app.callback()
 def callback():
@@ -29,6 +35,174 @@ def callback():
     SeedPitcher: An agentic system to assist with seed fundraising for early-stage startups.
     """
     pass
+
+
+@browser_server.command("start")
+def start_browser_server(
+    port: int = typer.Option(5500, "--port", "-p", help="Port to listen on"),
+    background: bool = typer.Option(True, "--background", "-b", help="Run in background"),
+):
+    """Start the browser server."""
+    console.print("[bold blue]Starting browser server...[/bold blue]")
+    
+    # Determine the path to the run_server.py script
+    try:
+        import importlib.util
+        module_path = importlib.util.find_spec("seed_pitcher.browsers.run_server").origin
+    except (ImportError, AttributeError):
+        # Fallback to manual path construction if module spec fails
+        import os.path
+        module_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
+                                   "seed_pitcher", "browsers", "run_server.py")
+    
+    # Create log directory if it doesn't exist
+    log_dir = Path.home() / ".seed_pitcher" / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Path to log file
+    log_file = log_dir / "browser_server.log"
+    
+    # Path to PID file
+    pid_file = log_dir / "browser_server.pid"
+    
+    # Check if server is already running
+    if pid_file.exists():
+        try:
+            pid = int(pid_file.read_text().strip())
+            try:
+                # Check if process is running
+                os.kill(pid, 0)
+                console.print(f"[yellow]Browser server is already running with PID {pid}[/yellow]")
+                return
+            except OSError:
+                # Process is not running, remove PID file
+                pid_file.unlink()
+        except Exception as e:
+            console.print(f"[yellow]Error checking server status: {e}[/yellow]")
+            pid_file.unlink()
+    
+    # Start the server
+    try:
+        if background:
+            # Start server in background
+            with open(log_file, "a") as log_out:
+                process = subprocess.Popen(
+                    [sys.executable, module_path, "--port", str(port)],
+                    stdout=log_out,
+                    stderr=log_out,
+                    start_new_session=True,  # Detach from parent process
+                )
+            
+            # Write PID to file
+            pid_file.write_text(str(process.pid))
+            
+            console.print(f"[green]Browser server started in background with PID {process.pid}[/green]")
+            console.print(f"[blue]Log file: {log_file}[/blue]")
+            console.print(f"[blue]Server running on http://localhost:{port}[/blue]")
+            console.print(f"[blue]Use 'seedpitcher browser-server status' to check status[/blue]")
+            console.print(f"[blue]Use 'seedpitcher browser-server stop' to stop the server[/blue]")
+        else:
+            # Start server in foreground
+            console.print("[green]Starting browser server in foreground...[/green]")
+            console.print("[yellow]Press Ctrl+C to stop[/yellow]")
+            subprocess.run([sys.executable, module_path, "--port", str(port)])
+    except Exception as e:
+        console.print(f"[red]Error starting browser server: {e}[/red]")
+
+
+@browser_server.command("stop")
+def stop_browser_server():
+    """Stop the browser server."""
+    console.print("[bold blue]Stopping browser server...[/bold blue]")
+    
+    # Path to PID file
+    pid_file = Path.home() / ".seed_pitcher" / "logs" / "browser_server.pid"
+    
+    # Check if server is running
+    if not pid_file.exists():
+        console.print("[yellow]Browser server is not running[/yellow]")
+        return
+    
+    try:
+        # Read PID from file
+        pid = int(pid_file.read_text().strip())
+        
+        # Try to terminate the process
+        try:
+            console.print(f"[blue]Terminating browser server with PID {pid}...[/blue]")
+            os.kill(pid, 15)  # SIGTERM
+            
+            # Wait for the process to terminate
+            import time
+            for _ in range(5):  # Wait up to 5 seconds
+                time.sleep(1)
+                try:
+                    os.kill(pid, 0)  # Check if process is still running
+                except OSError:
+                    # Process is not running
+                    console.print("[green]Browser server stopped successfully[/green]")
+                    pid_file.unlink()
+                    return
+            
+            # If we're here, the process didn't terminate gracefully
+            console.print("[yellow]Process didn't terminate gracefully, force killing...[/yellow]")
+            os.kill(pid, 9)  # SIGKILL
+            console.print("[green]Browser server stopped forcefully[/green]")
+        except OSError as e:
+            if e.errno == 3:  # No such process
+                console.print("[yellow]Browser server is not running (PID not found)[/yellow]")
+            else:
+                console.print(f"[red]Error stopping browser server: {e}[/red]")
+                
+        # Clean up PID file
+        pid_file.unlink()
+    except Exception as e:
+        console.print(f"[red]Error stopping browser server: {e}[/red]")
+
+
+@browser_server.command("status")
+def browser_server_status():
+    """Check the status of the browser server."""
+    console.print("[bold blue]Checking browser server status...[/bold blue]")
+    
+    # Path to PID file
+    pid_file = Path.home() / ".seed_pitcher" / "logs" / "browser_server.pid"
+    
+    # Check if server is running
+    if not pid_file.exists():
+        console.print("[yellow]Browser server is not running[/yellow]")
+        return
+    
+    try:
+        # Read PID from file
+        pid = int(pid_file.read_text().strip())
+        
+        # Check if process is running
+        try:
+            os.kill(pid, 0)  # This doesn't actually kill the process, just checks if it exists
+            
+            # Now check the HTTP health endpoint
+            try:
+                import requests
+                port = 5500  # Default port
+                
+                response = requests.get(f"http://localhost:{port}/health", timeout=2)
+                if response.status_code == 200:
+                    health_data = response.json()
+                    browser_status = health_data.get("browser", "unknown")
+                    console.print(f"[green]Browser server is running with PID {pid}[/green]")
+                    console.print(f"[blue]Server URL: http://localhost:{port}[/blue]")
+                    console.print(f"[blue]Browser status: {browser_status}[/blue]")
+                    console.print(f"[blue]Health status: {health_data.get('status', 'unknown')}[/blue]")
+                else:
+                    console.print(f"[yellow]Browser server process is running with PID {pid}, but HTTP endpoint returned status {response.status_code}[/yellow]")
+            except Exception as e:
+                console.print(f"[yellow]Browser server process is running with PID {pid}, but couldn't connect to HTTP endpoint: {e}[/yellow]")
+        except OSError:
+            console.print("[yellow]Browser server is not running (stale PID file)[/yellow]")
+            pid_file.unlink()
+    except Exception as e:
+        console.print(f"[red]Error checking browser server status: {e}[/red]")
 
 
 @app.command()

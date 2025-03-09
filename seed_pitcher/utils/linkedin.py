@@ -692,7 +692,7 @@ class LinkedInHandler:
             for selector in message_selectors:
                 try:
                     logger.info(f"Looking for message button with selector: {selector}")
-                    message_button = self.browser.find_element(selector)
+                    message_button = self.browser._safe_find_elements('button.artdeco-button')[7]
                     if message_button:
                         logger.info(f"Found message button with selector: {selector}")
                         break

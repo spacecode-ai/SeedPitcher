@@ -1,24 +1,42 @@
-"""Integration with simular.ai browser."""
+"""Integration with simular.ai browser for thread-safe operation.
+
+This browser implementation is designed to be used in environments where
+thread safety is important, such as when using the Pin AI SDK which
+uses threading for message polling.
+"""
 
 import time
+import logging
+import threading
 from typing import List, Dict, Any, Optional
 
+logger = logging.getLogger("seed_pitcher.browsers.simular")
 
 class SimularBrowser:
-    """Wrapper for the simular.ai browser."""
+    """Wrapper for the simular.ai browser with thread safety."""
 
     def __init__(self):
-        """Initialize the simular.ai browser."""
+        """Initialize the simular.ai browser with thread safety."""
+        self._lock = threading.RLock()  # Reentrant lock for thread safety
         try:
+            logger.info("Initializing SimularBrowser for thread-safe operation")
             from simular import Simular
-
-            self.browser = Simular()
-            self.driver = self.browser.driver
+            
+            with self._lock:
+                self.browser = Simular()
+                self.driver = self.browser.driver
+                # Set implicit wait time
+                self.driver.implicitly_wait(10)
+            logger.info("SimularBrowser initialized successfully")
         except ImportError:
+            logger.error("Failed to import Simular package")
             raise ImportError(
                 "The simular package is not installed. "
                 "Please install it with: pip install pysimular"
             )
+        except Exception as e:
+            logger.error(f"Error initializing SimularBrowser: {str(e)}")
+            raise
 
     def navigate(self, url: str) -> None:
         """Navigate to a URL."""
